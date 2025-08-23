@@ -179,27 +179,6 @@ python scripts\\sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_b
 * `--nonstat_boost_along`、`--nonstat_boost_cross`、`--nonstat_tau` 非平稳长度随“离岸距离”的增强幅度与尺度
 * `--no_opt`、`--n_restarts` 关闭/开启超参优化与重启次数
 
----
-
-## 讲解要点（你上台用） Presenter Notes
-
-* 先展示 PDE 背景图，再叠加 GP 残差 → 总体预测 = 背景 + 学到的“局部异常/热点”。
-* 海岸屏障核 + 非平稳核：在近岸区域缩短相关长度，避免跨陆“串场”；离岸相关性更长，提升外海插值稳定性。
-* Co-Kriging 把“便宜的”遥感代理当作趋势基底，少量“贵的”实验室点修正系统偏差，**在样本数相同情况下显著降 RMSE**。
-* 主动采样用互信息，防止“全挑高不确定性但挤在一起”，信息更高效。
-
----
-
-## 故障排查 Troubleshooting
-
-* PowerShell 禁止激活虚拟环境
-  运行（管理员 PowerShell）`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-* Windows + Python 3.13 下 `numpy` C 扩展报错
-  建议使用 Python 3.10–3.11；或先创建虚拟环境再 `pip install -r requirements.txt`
-* `shapely` 安装慢或失败
-  尝试 `pip install --only-binary=:all: shapely==2.0.2`，确保使用预编译轮子
-* 找不到 `src...` 模块
-  本仓库已加 `src/__init__.py`，请从项目根目录执行脚本：`python scripts\\run_baseline.py`
 
 ---
 
