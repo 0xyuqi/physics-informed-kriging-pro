@@ -32,16 +32,15 @@ def main():
             rows.append({'lp':lp,'lc':lc,'MAE':mae,'RMSE':rmse})
             print(f"[sweep] lp={lp} lc={lc} -> RMSE={rmse:.4f}, MAE={mae:.4f}")
     df=pd.DataFrame(rows); df.to_csv(out_dir/'all_metrics.csv',index=False)
-    P=df.pivot(index='lc',columns='lp',values='RMSE')
+    P=df.pivot_table(index='lc',columns='lp',values='RMSE', aggfunc='mean')
     plt.figure(); im=plt.imshow(P.values,origin='lower',aspect='auto')
     plt.xticks(range(len(P.columns)),P.columns); plt.yticks(range(len(P.index)),P.index)
     plt.xlabel('length_parallel (lp)'); plt.ylabel('length_cross (lc)')
     plt.title('RMSE heatmap (advanced GP)'); plt.colorbar(im)
-    import numpy as _np
     for i, lc in enumerate(P.index):
         for j, lp in enumerate(P.columns):
             v = P.loc[lc, lp]
-            if _np.isfinite(v):
+            if np.isfinite(v):
                 plt.text(j, i, f"{v:.3f}", ha='center', va='center', fontsize=8)
     print(f"[OK] summary saved -> {out_dir}")
 
