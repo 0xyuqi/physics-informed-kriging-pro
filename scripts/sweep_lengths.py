@@ -37,12 +37,12 @@ def main():
     plt.xticks(range(len(P.columns)),P.columns); plt.yticks(range(len(P.index)),P.index)
     plt.xlabel('length_parallel (lp)'); plt.ylabel('length_cross (lc)')
     plt.title('RMSE heatmap (advanced GP)'); plt.colorbar(im)
-    import numpy as np as _np
-    for i,lc in enumerate(P.index):
-        for j,lp in enumerate(P.columns):
-            v=P.loc[lc,lp]; 
-            if _np.isfinite(v): plt.text(j,i,f"{v:.3f}",ha='center',va='center',fontsize=8)
-    plt.tight_layout(); plt.savefig(out_dir/'heatmap.png',dpi=160); plt.close()
+    import numpy as _np
+    for i, lc in enumerate(P.index):
+        for j, lp in enumerate(P.columns):
+            v = P.loc[lc, lp]
+            if _np.isfinite(v):
+                plt.text(j, i, f"{v:.3f}", ha='center', va='center', fontsize=8)
     print(f"[OK] summary saved -> {out_dir}")
 
 if __name__=='__main__':
