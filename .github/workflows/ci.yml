@@ -45,7 +45,10 @@ jobs:
 
       - name: Baseline (PDE + Nonstationary + Barrier)
         run: |
-          python scripts/run_baseline.py --use_pde_background --barrier_geojson data/malaysia_coast_example.geojson
+         python scripts/run_baseline.py \
+           --use_pde_background \
+          --barrier_geojson data/malaysia_coast_example.geojson \
+          --no_opt
 
       - name: Active sampling (MI + min-dist)
         run: |
@@ -109,6 +112,15 @@ jobs:
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
+
+      - name: Sanity check
+        run: |
+           python -c "import sys, platform; print(platform.platform()); \
+                      import numpy, scipy, pandas, shapely, sklearn, matplotlib; \
+                      print('numpy', numpy.__version__, 'scipy', scipy.__version__, \
+                            'pandas', pandas.__version__, 'shapely', shapely.__version__, \
+                            'sklearn', sklearn.__version__)"
+
 
       - name: Ensure data (idempotent)
         run: |
@@ -175,3 +187,5 @@ jobs:
           git add -A
           git commit -m "ci: publish artifacts from ${GITHUB_SHA}" || echo "Nothing to commit"
           git push origin artifacts
+          
+ 
