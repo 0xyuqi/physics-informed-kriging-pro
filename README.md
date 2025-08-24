@@ -1,7 +1,5 @@
 # Physics-Informed Kriging
 
- **PDE 物理背景 + 流向/横向各向异性 + 非平稳 Gibbs 风格核 + 海岸线屏障核 + Co-Kriging 低价代理融合 + 主动采样 + 参数扫描热力图**。
- **PDE background mean + flow-aligned anisotropy + non-stationary Gibbs-like kernel + coastline barrier + co-kriging fusion + active sampling + sweep heatmaps**.
 
 ---
 
@@ -9,7 +7,7 @@
 
 * 物理先验：稳态对流–扩散方程在网格上求解，双线性插值作为 GP 均值并线性校准
   Steady advection–diffusion PDE solved on grid → bilinear interpolation as mean with linear calibration
-* 核函数“顶配”：RBF(ARD, 流向/横向) + RationalQuadratic(多尺度) + 非平稳 Gibbs 风格核 × 海岸屏障核 + White 噪声
+* 核函数：RBF(ARD, 流向/横向) + RationalQuadratic(多尺度) + 非平稳 Gibbs 风格核 × 海岸屏障核 + White 噪声
   RBF(ARD) + RQ + non-stationary Gibbs-like × barrier + white noise
 * 低成本代理融合：Kennedy–O’Hagan 自回归 Co-Kriging（ρ·f\_L + δGP）
   Autoregressive co-kriging fusion of low- and high-fidelity signals
@@ -115,7 +113,7 @@ python scripts\\generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy
 
 ## 真实海岸线替换 Real Malaysia Coastline
 
-将你的海岸线 GeoJSON 放入 `data/`（多边形表示**陆地**）。运行时指定：
+将海岸线 GeoJSON 放入 `data/`（多边形表示**陆地**）。运行时指定：
 
 ```powershell
 python scripts\\run_baseline.py --use_pde_background --barrier_geojson data\\your_malaysia_coast.geojson
