@@ -1,0 +1,191 @@
+name: CI - physics-informed-kriging-pro
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  DATA_DIR: data
+  FIG_DIR: figures
+  SUM_DIR: summary
+
+jobs:
+  build-linux:
+    name: Build & Reproduce (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Generate synthetic data (reproducible)
+        run: |
+          python scripts/generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
+
+      - name: Baseline (PDE + Nonstationary + Barrier)
+        run: |
+         python scripts/run_baseline.py \
+           --use_pde_background \
+          --barrier_geojson data/malaysia_coast_example.geojson \
+          --no_opt
+
+      - name: Active sampling (MI + min-dist)
+        run: |
+          python scripts/select_next_samples.py --k_next 8 --min_dist 3.0
+
+      - name: Co-Kriging fusion (low+high fidelity)
+        run: |
+          python scripts/run_cokriging.py --n_lowfit 800
+
+      - name: Sweep heatmap
+        run: |
+          python scripts/sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_background
+
+      - name: Upload figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures-linux
+          path: ${{ env.FIG_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: summary-linux
+          path: ${{ env.SUM_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload predictions
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-linux
+          path: |
+            ${{ env.DATA_DIR }}/grid_pred.csv
+            ${{ env.DATA_DIR }}/grid_pred_cok.csv
+          if-no-files-found: warn
+          retention-days: 14
+
+  param-matrix:
+    name: Param Matrix (lp=${{ matrix.lp }}, lc=${{ matrix.lc }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        lp: [20, 30, 40]
+        lc: [6, 8, 12]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Sanity check
+        run: |
+           python -c "import sys, platform; print(platform.platform()); \
+                      import numpy, scipy, pandas, shapely, sklearn, matplotlib; \
+                      print('numpy', numpy.__version__, 'scipy', scipy.__version__, \
+                            'pandas', pandas.__version__, 'shapely', shapely.__version__, \
+                            'sklearn', sklearn.__version__)"
+
+
+      - name: Ensure data (idempotent)
+        run: |
+          python scripts/generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
+
+      - name: Run baseline with matrix params
+        run: |
+          OUT="figures/matrix/lp_${{ matrix.lp }}_lc_${{ matrix.lc }}"
+          mkdir -p "$OUT"
+          python scripts/run_baseline.py \
+            --use_pde_background \
+            --barrier_geojson data/malaysia_coast_example.geojson \
+            --length_parallel ${{ matrix.lp }} \
+            --length_cross ${{ matrix.lc }} \
+            --out_dir "$OUT" \
+            --no_opt
+
+      - name: Upload matrix figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-lp${{ matrix.lp }}-lc${{ matrix.lc }}
+          path: figures/matrix/lp_${{ matrix.lp }}_lc_${{ matrix.lc }}
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish-artifacts-branch:
+    name: Publish artifacts branch
+    needs: [build-linux, param-matrix]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (default branch)
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _ci_artifacts
+
+      - name: Prepare artifacts folder
+        run: |
+          ls -R _ci_artifacts || true
+          mkdir -p _publish/ci
+          cp -r _ci_artifacts/* _publish/ci/ || true
+
+      - name: Push to artifacts branch
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 取回或创建 artifacts 分支
+          git fetch origin artifacts || true
+          if git show-ref --quiet refs/remotes/origin/artifacts; then
+            git switch --force-create artifacts origin/artifacts
+          else
+            git switch --orphan artifacts
+          fi
+
+          rm -rf * .github || true
+          mkdir -p ci
+          cp -r ../_publish/ci/* ci/ || true
+
+          git add -A
+          git commit -m "ci: publish artifacts from ${GITHUB_SHA}" || echo "Nothing to commit"
+          git push origin artifacts
+          
+ 
