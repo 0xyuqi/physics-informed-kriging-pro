@@ -1,8 +1,7 @@
 {
   "vx": 1.0,
   "vy": 0.3,
-  "grid": 80,
-  "noise": 0.1,
-  "seed": 42,
-  "bg_slope": 0.002
+  "grid": 100,
+  "noise": 0.08,
+  "seed": 7
 }
