@@ -15,40 +15,7 @@
 * **评估与可视化**：支持 LOO/ K-fold、**H-步时序外推**；输出 MAE/RMSE、**CRPS**（概率预报质量）、**热点识别 P/R**（阈值法）与地图/剖面图/不确定度图等。
 
 ---
-### 模型与假设
 
-<p align="center">
-  <img src="./docs/formulas/eq_gp.png" alt="Gaussian Process with physics prior" />
-</p>
-
-<p align="center">
-  <img src="./docs/formulas/eq_obs.png" alt="Observation noise" />
-</p>
-
-### 物理先验（PDE）
-
-<p align="center">
-  <img src="./docs/formulas/eq_pde.png" alt="Advection–diffusion PDE" />
-</p>
-
-### 核与多保真
-
-<p align="center">
-  <img src="./docs/formulas/eq_kernel_sep.png" alt="Separable spatiotemporal kernel" />
-</p>
-
-<p align="center">
-  <img src="./docs/formulas/eq_cokriging.png" alt="Co-Kriging autoregressive model" />
-</p>
-
-### 主动采样目标
-
-<p align="center">
-  <img src="./docs/formulas/eq_active.png" alt="Active sampling objective" />
-</p>
-
-
----
 
 ##   数据规范（Data Schema）
 
