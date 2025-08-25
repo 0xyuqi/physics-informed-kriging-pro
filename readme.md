@@ -18,39 +18,74 @@
 
 ##   方法与公式（简要）
 
-给定观测 $\mathcal{D}=\{(\mathbf{s}_i,t_i), z_i\}$，在物理先验 $m_\theta(\mathbf{s},t)$ 下建模：
+给定观测集 \$\mathcal{D}={(\boldsymbol{s}*i,t\_i),, z\_i}*{i=1}^N\$，在物理先验 \$m\_\theta(\boldsymbol{s},t)\$ 下建模：
 
 $$
-f(\mathbf{s},t) \sim \mathcal{GP}\!\left(m_\theta(\mathbf{s},t)\cdot\beta,\; k\big((\mathbf{s},t),(\mathbf{s}',t')\big)\right),\quad
-z = f + \varepsilon,\ \varepsilon\sim\mathcal{N}(0,\sigma_n^2).
+\begin{aligned}
+f(\boldsymbol{s},t) &\sim \mathcal{GP}\!\left(
+m_\theta(\boldsymbol{s},t)\,\beta,\;
+k\!\left((\boldsymbol{s},t),(\boldsymbol{s}',t')\right)
+\right),\\[2mm]
+z_i &= f(\boldsymbol{s}_i,t_i)+\varepsilon_i,\qquad 
+\varepsilon_i\sim \mathcal{N}(0,\sigma_n^2).
+\end{aligned}
 $$
 
-**物理先验（PDE）**：对流–扩散
+**物理先验（PDE）：对流–扩散**
 
 $$
-\partial_t c + \mathbf{u}\cdot\nabla c = \kappa\nabla^2 c + q(\mathbf{s},t),\quad \text{BC/IC 给定。}
+\partial_t c(\boldsymbol{s},t)+\boldsymbol{u}\!\cdot\!\nabla c(\boldsymbol{s},t)
+=\kappa\,\nabla^2 c(\boldsymbol{s},t)+q(\boldsymbol{s},t).
 $$
 
-* **稳态**：$\partial_t c=0$，得到 $m_\theta(\mathbf{s})$；
-* **非稳态**：时间推进得到 $m_\theta(\mathbf{s},t)$。
-  在 PhIK/CoPhIK 视角，也可把物理模型的多次模拟（或粗/细保真解）用于构造/修正先验与残差过程。([engineering.lehigh.edu][1], [ACM Digital Library][2])
+* 稳态：\$\partial\_t c=0 ;\Rightarrow; m\_\theta(\boldsymbol{s})\$。
+* 非稳态：时间推进得到 \$m\_\theta(\boldsymbol{s},t)\$；也可将多次物理模拟（粗/细保真）用于构造或修正先验与残差过程。
 
-**核函数**（示例）：
+**核函数（示例）**
 
-* 空间核 $k_s = \text{RBF}_{\parallel}\cdot \text{RBF}_{\perp} + \text{RQ} + \text{NonstationaryMod}$，可叠加**屏障核**；
-* 时间核 $k_t$：RBF/Matern（可加日周期核）；
-* 时空核：可分离 $k = k_s \times k_t$，或构造**非分离**核以表达顺流“传播滞后”。
-* 观测噪声：$\sigma_n^2$（可异方差）。
+* 空间核：
 
-**多保真（Co-Kriging）**（自回归式）：
+  $$
+  k_s(\boldsymbol{s},\boldsymbol{s}')
+  = \mathrm{RBF}_{\parallel}\!\cdot\!\mathrm{RBF}_{\perp}
+    + \mathrm{RQ}
+    + \mathrm{NonstationaryMod},
+  $$
+
+  可叠加**屏障核**抑制越岸相关。
+* 时间核：\$k\_t(t,t')\$ 取 RBF / Matern（可加周期核）。
+* 时空核（两种写法）：
+
+  $$
+  k\!\left((\boldsymbol{s},t),(\boldsymbol{s}',t')\right)
+  = k_s(\boldsymbol{s},\boldsymbol{s}')\,k_t(t,t') 
+  \quad\text{（可分离）;}
+  $$
+
+  或设计**非分离**核以表达顺流“传播滞后”。
+* 观测噪声：\$\sigma\_n^2\$（可异方差）。
+
+**多保真（Co-Kriging，自回归式）**
 
 $$
-f_H(\cdot) = \rho\, f_L(\cdot) + \delta(\cdot),\ \ \delta\sim\mathcal{GP}(0,k_\delta),
+f_H(\cdot)=\rho\,f_L(\cdot)+\delta(\cdot),\qquad 
+\delta\sim \mathcal{GP}\!\left(0,\,k_\delta\right),
 $$
 
-其中 $f_L$ 为低价代理（如遥感），$f_H$ 为高保真“真值”。([ACM Digital Library][2])
+其中 \$f\_L\$ 为低成本代理（如遥感），\$f\_H\$ 为高保真“真值”。
 
-**主动采样**：从候选集合 $\mathcal{C}\subset \Omega$ 选择集合 $\mathcal{Q}$ 最大化 $\log\det\big(K_{\mathcal{Q}|\mathcal{D}}\big)$ 或 $\sum \text{Var}_{\text{post}}$，并施加**最小间距/屏障约束**。可扩展到时空候选 $(\mathbf{s},t)$。([arXiv][3])
+**主动采样**
+
+从候选集合 \$\mathcal{C}\$ 中选择 \$\mathcal{Q}\$（大小为 \$K\$）最大化信息增益或后验方差和，并施加最小间距/屏障约束：
+
+$$
+\mathcal{Q}^{\star}
+=\arg\max_{\substack{\mathcal{Q}\subset\mathcal{C}\\ |\mathcal{Q}|=K}}
+\log\det K_{\mathcal{Q}\mid \mathcal{D}}
+\quad\text{或}\quad
+\sum_{x\in\mathcal{Q}}\mathrm{Var}_{\text{post}}(x).
+$$
+
 
 ---
 
@@ -70,7 +105,7 @@ $$
 
 ---
 
-## ⚙️ 配置文件示例（`config.yaml`）
+##   配置文件示例（`config.yaml`）
 
 ```yaml
 # 数据
@@ -128,7 +163,7 @@ eval:
 
 ---
 
-## 🚀 快速上手（推荐流程）
+##   快速上手（推荐流程）
 
 1. **准备数据**：把现有监测数据与可用代理按“数据规范”整理到 `data/`；检查坐标与屏障一致。
 2. **运行基线（PIK）**：启用 `physics.use_background=true`；输出**均值/不确定度**地图、**指标**（MAE/RMSE/CRPS）与**全网格预测 CSV**。
@@ -171,7 +206,7 @@ eval:
 
 ---
 
-## 🛠  常见坑位与排查
+##    常见坑位与排查
 
 * **屏障无效/穿岸**：`barrier.geojson` 非闭合或坐标系不一致 → 修正 CRS/闭合面。
 * **核尺度失衡**：沿/横流长度差异过大导致数值不稳 → 对数域优化并设合理先验/边界。
@@ -204,7 +239,7 @@ eval:
 
 
 
-## 📚 参考文献（主要方法脉络）
+##   参考文献（主要方法脉络）
 
 1. **PhIK（Physics-Informed Kriging）**：Yang, Tartakovsky & Tartakovsky, *A Physics-Informed Gaussian Process Regression Method for Data-Model Convergence*, 2018. ([engineering.lehigh.edu][1])
 2. **CoPhIK（Physics-Informed Co-Kriging，多保真）**：Yang et al., *Physics-informed CoKriging*, J. Comput. Phys., 2019. ([ACM Digital Library][2])
