@@ -12,9 +12,10 @@ class FeatureExtractor(nn.Module):
 
 class DKLExactGP(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood, feature: nn.Module):
-        self.feature = feature
-        z = self.feature(train_x)
+    
+        z = feature(train_x)
         super().__init__(z, train_y, likelihood)
+        self.feature = feature
         self.mean_module  = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(ard_num_dims=z.shape[-1])
