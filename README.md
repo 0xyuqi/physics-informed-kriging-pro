@@ -5,7 +5,7 @@
 
 ---
 
-## ✨ Highlights / 亮点
+##  Highlights / 亮点
 
 - **Physics prior 物理先验**  
   EN: Steady advection–diffusion PDE solved on grid ⇒ bilinear interpolation as GP mean + linear calibration  
@@ -29,7 +29,7 @@
 
 ---
 
-## 🗂 Project Tree / 目录结构
+##  Project Tree / 目录结构
 
 ```
 
@@ -63,12 +63,12 @@ physics-informed-kriging-pro/
 
 ````
 
-> ✅ 仓库自带 `data/` 示例，可直接运行；无需先生成数据。  
+>  仓库自带 `data/` 示例，可直接运行；无需先生成数据。  
 > Data is pre-baked; you can run straight away.
 
 ---
 
-## 🧰 Environment / 环境
+##  Environment / 环境
 
 **Recommended**: Python 3.10–3.11（Windows 轮子更稳定）  
 Recommended Python 3.10–3.11 for stable wheels on Windows.
@@ -95,7 +95,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🚀 Quickstart / 开始
+##  Quickstart / 开始
 
 ### A) Baseline（PDE 背景 + 屏障核）
 
@@ -114,7 +114,7 @@ python scripts/run_baseline.py \
 
 ---
 
-## 🔁 Synthetic Data & Proxy / 合成数据与代理
+##  Synthetic Data & Proxy / 合成数据与代理
 
 重新生成（可调样本数、网格、流速、噪声等）：
 
@@ -130,7 +130,7 @@ python scripts/generate_synth.py \
 
 ---
 
-## 🗺 Real Coastline Replacement / 真实海岸线替换
+##  Real Coastline Replacement / 真实海岸线替换
 
 将海岸线 GeoJSON 放到 `data/`（**多边形代表陆地**），运行时指定：
 
@@ -144,7 +144,7 @@ python scripts/run_baseline.py \
 
 ---
 
-## 🧭 Active Sampling / 主动采样
+##  Active Sampling / 主动采样
 
 互信息 logdet 贪心 + **最小距离约束**，输出下一轮采样点：
 
@@ -156,7 +156,7 @@ python scripts/select_next_samples.py --k_next 8 --min_dist 3.0
 
 ---
 
-## 🤝 Co-Kriging (Low-cost Proxy Fusion) / 低价代理融合
+##  Co-Kriging (Low-cost Proxy Fusion) / 低价代理融合
 
 Kennedy–O’Hagan 自回归：`z(x) = ρ·f_L(x) + δ(x)`，其中 `f_L` 为低价代理拟合
 
@@ -171,7 +171,7 @@ python scripts/run_cokriging.py --n_lowfit 800 --lf_length 20 --hf_length 15
 
 ---
 
-## 🔥 Hyper-parameter Sweep / 参数扫描与热力图
+##  Hyper-parameter Sweep / 参数扫描与热力图
 
 对流向/横向长度尺度 `(lp, lc)` 网格扫描，生成 RMSE 热力图：
 
@@ -187,7 +187,7 @@ python scripts/sweep_lengths.py \
 
 ---
 
-## 🧷 Common Flags / 常用参数
+##  Common Flags / 常用参数
 
 `run_baseline.py`
 
@@ -200,7 +200,7 @@ python scripts/sweep_lengths.py \
 
 ---
 
-## 🧪 Reproduce in One Go / 复现实验
+##  Reproduce in One Go / 复现实验
 
 ```bash
 # 1) 生成合成数据 + 代理
@@ -222,7 +222,7 @@ python scripts/sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_ba
 
 ---
 
-## 🧱 Tips & Troubleshooting / 常见问题
+##  Tips & Troubleshooting / 常见问题
 
 * **Windows 轮子安装失败 / 安装慢**：建议 Python 3.10–3.11；必要时切换国内源或使用 `pip --default-timeout 100`。
 * **地理屏障不生效**：检查 GeoJSON 里陆地是否为**闭合多边形**，坐标是否与数据同一坐标系（示例为归一化网格坐标或经纬度统一）。
@@ -231,7 +231,7 @@ python scripts/sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_ba
 
 ---
 
-## 📜 Citation / 致谢
+##  Citation / 致谢
 
 If you use this repository, please cite the PIK/kriging literature (advection–diffusion physics-informed GP, co-kriging) and acknowledge this implementation.
 若在科研中使用本仓库，请引用相关 PIK/Co-Kriging 文献，并标注本仓库为实现参考。
