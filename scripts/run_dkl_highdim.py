@@ -3,11 +3,10 @@ ROOT = os.path.dirname(os.path.dirname(__file__))
 for p in [ROOT, os.path.join(ROOT, "src")]:
     if os.path.isdir(p) and p not in sys.path:
         sys.path.insert(0, p)
-# -----------------
 
 import torch, gpytorch, os, math
 import matplotlib.pyplot as plt
-from pik_ext.dkl.model import make_dkl
+from src.models.dkl_model import make_dkl
 
 def friedman1(n, d=10, noise=0.1, seed=0):
     torch.manual_seed(seed)
@@ -38,9 +37,9 @@ def train_exact(model, likelihood, X, y, iters=150, lr=0.08):
         if i%50==0: print(f"[{i}] loss={loss.item():.3f}")
     model.eval(); likelihood.eval()
 
-def eval_nll_rmse(model, likelihood, X, y):
+def eval_nll_rmse(fwd, likelihood, X, y):
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        pred = likelihood(model(X))
+        pred = likelihood(fwd(X))
         mean = pred.mean; var = pred.variance
         nll  = (0.5*(torch.log(2*math.pi*var) + (y-mean)**2/var)).mean().item()
         rmse = torch.sqrt(torch.mean((mean-y)**2)).item()
@@ -48,18 +47,16 @@ def eval_nll_rmse(model, likelihood, X, y):
 
 def main(device=None):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs("outputs", exist_ok=True)
+    os.makedirs("figures", exist_ok=True)
 
     X, y = friedman1(400, d=20, noise=0.2, seed=0)
     Xtr, Ytr = X[:300].to(device), y[:300].to(device)
     Xte, Yte = X[300:].to(device), y[300:].to(device)
 
-    # baseline
     lik0 = gpytorch.likelihoods.GaussianLikelihood().to(device)
     gp0  = PlainExactGP(Xtr, Ytr, lik0).to(device)
     train_exact(gp0, lik0, Xtr, Ytr)
 
-    # DKL
     dkl, lik1 = make_dkl(in_dim=Xtr.shape[-1], train_x=Xtr, train_y=Ytr)
     dkl, lik1 = dkl.to(device), lik1.to(device)
     train_exact(dkl, lik1, Xtr, Ytr)
@@ -70,11 +67,10 @@ def main(device=None):
     print(f"Plain GP: NLL={nll0:.3f} RMSE={rmse0:.3f}")
     print(f"DKL     : NLL={nll1:.3f} RMSE={rmse1:.3f}")
 
-    labels = ["Plain GP","DKL"]; vals = [nll0, nll1]
-    plt.figure(figsize=(6,4)); plt.title("NLL (lower is better)"); plt.bar(labels, vals); plt.tight_layout(); plt.savefig("outputs/dkl_nll.png", dpi=160); plt.close()
-    vals = [rmse0, rmse1]
-    plt.figure(figsize=(6,4)); plt.title("RMSE (lower is better)"); plt.bar(labels, vals); plt.tight_layout(); plt.savefig("outputs/dkl_rmse.png", dpi=160); plt.close()
-    print("Saved outputs/dkl_nll.png and outputs/dkl_rmse.png")
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(6,4)); plt.title("NLL (lower is better)"); plt.bar(["Plain GP","DKL"], [nll0,nll1]); plt.tight_layout(); plt.savefig("figures/dkl_nll.png", dpi=160); plt.close()
+    plt.figure(figsize=(6,4)); plt.title("RMSE (lower is better)"); plt.bar(["Plain GP","DKL"], [rmse0,rmse1]); plt.tight_layout(); plt.savefig("figures/dkl_rmse.png", dpi=160); plt.close()
+    print("Saved figures/dkl_nll.png and figures/dkl_rmse.png")
 
 if __name__ == "__main__":
     main()
