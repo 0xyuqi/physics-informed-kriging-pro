@@ -1,13 +1,33 @@
 {
-  "format": "pt",
   "n_obs": 250,
-  "n_te": 120,
   "T": 25,
-  "H": 128,
-  "W": 128,
-  "charts": [
-    "figures/plume_posterior.png",
-    "figures/dkl_nll.png",
-    "figures/dkl_rmse.png"
-  ]
+  "H": 100,
+  "W": 100,
+  "dkl_vs_gp": {
+    "nll": [
+      1.05,
+      0.78
+    ],
+    "rmse": [
+      0.34,
+      0.25
+    ]
+  },
+  "artifacts": {
+    "figures": [
+      "plume_posterior.png",
+      "mean_map.png",
+      "std_map.png",
+      "dkl_nll.png",
+      "dkl_rmse.png",
+      "next_points.csv"
+    ],
+    "data": [
+      "dynamic_plume_fields.pt",
+      "dynamic_plume_obs.pt",
+      "dynamic_dkl_pred.pt",
+      "grid_pred.csv",
+      "grid_pred_cok.csv"
+    ]
+  }
 }
