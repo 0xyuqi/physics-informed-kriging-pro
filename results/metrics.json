@@ -1,0 +1,13 @@
+{
+  "format": "pt",
+  "n_obs": 250,
+  "n_te": 120,
+  "T": 25,
+  "H": 128,
+  "W": 128,
+  "charts": [
+    "figures/plume_posterior.png",
+    "figures/dkl_nll.png",
+    "figures/dkl_rmse.png"
+  ]
+}
