@@ -15,78 +15,66 @@
 * **评估与可视化**：支持 LOO/ K-fold、**H-步时序外推**；输出 MAE/RMSE、**CRPS**（概率预报质量）、**热点识别 P/R**（阈值法）与地图/剖面图/不确定度图等。
 
 ---
-
-##   方法与公式（简要）
-<img width="1242" height="384" alt="image" src="https://github.com/user-attachments/assets/2b6222f9-c673-4a5e-b3e3-7570c492163a" />
-
-
-给定观测集 \$\mathcal{D}={(\boldsymbol{s}*i,t\_i),, z\_i}*{i=1}^N\$，在物理先验 \$m\_\theta(\boldsymbol{s},t)\$ 下建模：
+##  方法与公式（简要）
+给定观测集 $\mathcal{D}=\{(\mathbf{s}_i,t_i),\, z_i\}_{i=1}^N$，在物理先验 $m_\theta(\mathbf{s},t)$ 下建模：
 
 $$
 \begin{aligned}
-f(\boldsymbol{s},t) &\sim \mathcal{GP}\!\left(
-m_\theta(\boldsymbol{s},t)\,\beta,\;
-k\!\left((\boldsymbol{s},t),(\boldsymbol{s}',t')\right)
-\right),\\[2mm]
-z_i &= f(\boldsymbol{s}_i,t_i)+\varepsilon_i,\qquad 
-\varepsilon_i\sim \mathcal{N}(0,\sigma_n^2).
+f(\mathbf{s},t) &\sim \mathcal{GP}\!\left(
+m_\theta(\mathbf{s},t)\,\beta,\;
+k\!\left((\mathbf{s},t),(\mathbf{s}',t')\right)
+\right),\\[6pt]
+z_i &= f(\mathbf{s}_i,t_i) + \varepsilon_i,\qquad 
+\varepsilon_i \sim \mathcal{N}(0,\sigma_n^2).
 \end{aligned}
 $$
 
 **物理先验（PDE）：对流–扩散**
 
 $$
-\partial_t c(\boldsymbol{s},t)+\boldsymbol{u}\!\cdot\!\nabla c(\boldsymbol{s},t)
-=\kappa\,\nabla^2 c(\boldsymbol{s},t)+q(\boldsymbol{s},t).
+\partial_t c(\mathbf{s},t) + \mathbf{u}\!\cdot\!\nabla c(\mathbf{s},t)
+= \kappa \nabla^2 c(\mathbf{s},t) + q(\mathbf{s},t),
+\qquad \text{BC/IC 给定}.
 $$
 
-* 稳态：\$\partial\_t c=0 ;\Rightarrow; m\_\theta(\boldsymbol{s})\$。
-* 非稳态：时间推进得到 \$m\_\theta(\boldsymbol{s},t)\$；也可将多次物理模拟（粗/细保真）用于构造或修正先验与残差过程。
+- 稳态：$\partial_t c = 0 \;\Rightarrow\; m_\theta(\mathbf{s})$  
+- 非稳态：时间推进得到 $m_\theta(\mathbf{s},t)$（亦可用多次物理模拟构造/修正先验与残差）。
 
 **核函数（示例）**
 
-* 空间核：
-
+- 空间核：
   $$
-  k_s(\boldsymbol{s},\boldsymbol{s}')
+  k_s(\mathbf{s},\mathbf{s}')
   = \mathrm{RBF}_{\parallel}\!\cdot\!\mathrm{RBF}_{\perp}
-    + \mathrm{RQ}
-    + \mathrm{NonstationaryMod},
+    + \mathrm{RQ} + \mathrm{NonstationaryMod}
   $$
-
-  可叠加**屏障核**抑制越岸相关。
-* 时间核：\$k\_t(t,t')\$ 取 RBF / Matern（可加周期核）。
-* 时空核（两种写法）：
-
-  $$
-  k\!\left((\boldsymbol{s},t),(\boldsymbol{s}',t')\right)
-  = k_s(\boldsymbol{s},\boldsymbol{s}')\,k_t(t,t') 
-  \quad\text{（可分离）;}
-  $$
-
-  或设计**非分离**核以表达顺流“传播滞后”。
-* 观测噪声：\$\sigma\_n^2\$（可异方差）。
+  （可叠加屏障核）
+- 时间核：$k_t(t,t')$ 取 RBF / Matern（可加日周期核）  
+- 时空核：$k\big((\mathbf{s},t),(\mathbf{s}',t')\big)=k_s(\mathbf{s},\mathbf{s}')\,k_t(t,t')$（可分离），或设计**非分离**核以表达顺流“传播滞后”  
+- 观测噪声：$\sigma_n^2$（可异方差）
 
 **多保真（Co-Kriging，自回归式）**
 
 $$
-f_H(\cdot)=\rho\,f_L(\cdot)+\delta(\cdot),\qquad 
-\delta\sim \mathcal{GP}\!\left(0,\,k_\delta\right),
+f_H(\cdot)=\rho\,f_L(\cdot)+\delta(\cdot),\qquad
+\delta\sim \mathcal{GP}\!\left(0,\,k_\delta\right).
 $$
 
-其中 \$f\_L\$ 为低成本代理（如遥感），\$f\_H\$ 为高保真“真值”。
+其中 $f_L$ 为低价代理（如遥感），$f_H$ 为高保真“真值”。
 
 **主动采样**
 
-从候选集合 \$\mathcal{C}\$ 中选择 \$\mathcal{Q}\$（大小为 \$K\$）最大化信息增益或后验方差和，并施加最小间距/屏障约束：
+$$
+\mathcal{Q}^\star
+= \arg\max_{\substack{\mathcal{Q}\subset \mathcal{C}\\|\mathcal{Q}|=K}}
+\bigg[
+\log\det\!\big(K_{\mathcal{Q}\mid \mathcal{D}}\big)
+\ \text{或}\
+\sum_{x\in\mathcal{Q}} \mathrm{Var}_{\text{post}}(x)
+\bigg],
+$$
 
-$$
-\mathcal{Q}^{\star}
-=\arg\max_{\substack{\mathcal{Q}\subset\mathcal{C}\\ |\mathcal{Q}|=K}}
-\log\det K_{\mathcal{Q}\mid \mathcal{D}}
-\quad\text{或}\quad
-\sum_{x\in\mathcal{Q}}\mathrm{Var}_{\text{post}}(x).
-$$
+并施加最小间距/屏障约束；可扩展到时空候选 $(\mathbf{s},t)$。
 
 
 ---
