@@ -16,63 +16,23 @@
 
 ---
 ##  方法与公式（简要）
-给定观测集 $\mathcal{D}=\{(\mathbf{s}_i,t_i),\, z_i\}_{i=1}^N$，在物理先验 $m_\theta(\mathbf{s},t)$ 下建模：
+模型（GP）与观测噪声：  
+<img alt="gp-model"
+src="https://latex.codecogs.com/svg.image?\fn_phv&space;f(\mathbf{s},t)\sim\mathcal{GP}\!\left(m_\theta(\mathbf{s},t)\,\beta,\,k\!\left((\mathbf{s},t),(\mathbf{s}',t')\right)\right),\quad
+z=f+\varepsilon,\ \varepsilon\sim\mathcal{N}(0,\sigma_n^2)" />
 
-$$
-\begin{aligned}
-f(\mathbf{s},t) &\sim \mathcal{GP}\!\left(
-m_\theta(\mathbf{s},t)\,\beta,\;
-k\!\left((\mathbf{s},t),(\mathbf{s}',t')\right)
-\right),\\[6pt]
-z_i &= f(\mathbf{s}_i,t_i) + \varepsilon_i,\qquad 
-\varepsilon_i \sim \mathcal{N}(0,\sigma_n^2).
-\end{aligned}
-$$
+对流–扩散 PDE：  
+<img alt="pde"
+src="https://latex.codecogs.com/svg.image?\fn_phv&space;\partial_t&space;c(\mathbf{s},t)&plus;\mathbf{u}\cdot\nabla&space;c(\mathbf{s},t)=\kappa\nabla^{2}c(\mathbf{s},t)&plus;q(\mathbf{s},t)" />
 
-**物理先验（PDE）：对流–扩散**
+Co-Kriging：  
+<img alt="cokriging"
+src="https://latex.codecogs.com/svg.image?\fn_phv&space;f_H(\cdot)=\rho\,f_L(\cdot)&plus;\delta(\cdot),\ \ \delta\sim\mathcal{GP}(0,k_\delta)" />
 
-$$
-\partial_t c(\mathbf{s},t) + \mathbf{u}\!\cdot\!\nabla c(\mathbf{s},t)
-= \kappa \nabla^2 c(\mathbf{s},t) + q(\mathbf{s},t),
-\qquad \text{BC/IC 给定}.
-$$
+主动采样目标：  
+<img alt="active"
+src="https://latex.codecogs.com/svg.image?\fn_phv&space;\mathcal{Q}^\star=\arg\max_{|\mathcal{Q}|=K}\left[\log\det(K_{\mathcal{Q}\mid\mathcal{D}})\ \text{or}\ \sum_{x\in\mathcal{Q}}\mathrm{Var}_{\text{post}}(x)\right]" />
 
-- 稳态：$\partial_t c = 0 \;\Rightarrow\; m_\theta(\mathbf{s})$  
-- 非稳态：时间推进得到 $m_\theta(\mathbf{s},t)$（亦可用多次物理模拟构造/修正先验与残差）。
-
-**核函数（示例）**
-
-- 空间核：
-  $$
-  k_s(\mathbf{s},\mathbf{s}')
-  = \mathrm{RBF}_{\parallel}\!\cdot\!\mathrm{RBF}_{\perp}
-    + \mathrm{RQ} + \mathrm{NonstationaryMod}
-  $$
-  （可叠加屏障核）
-- 时间核：$k_t(t,t')$ 取 RBF / Matern（可加日周期核）  
-- 时空核：$k\big((\mathbf{s},t),(\mathbf{s}',t')\big)=k_s(\mathbf{s},\mathbf{s}')\,k_t(t,t')$（可分离），或设计**非分离**核以表达顺流“传播滞后”  
-- 观测噪声：$\sigma_n^2$（可异方差）
-
-**多保真（Co-Kriging，自回归式）**
-
-$$
-f_H(\cdot)=\rho\,f_L(\cdot)+\delta(\cdot),\qquad
-\delta\sim \mathcal{GP}\!\left(0,\,k_\delta\right).
-$$
-
-其中 $f_L$ 为低价代理（如遥感），$f_H$ 为高保真“真值”。
-
-**主动采样**
-
-$$
-\mathcal{Q}^\star
-= \arg\max_{\substack{\mathcal{Q}\subset \mathcal{C}\\|\mathcal{Q}|=K}}
-\bigg[
-\log\det\!\big(K_{\mathcal{Q}\mid \mathcal{D}}\big)
-\ \text{或}\
-\sum_{x\in\mathcal{Q}} \mathrm{Var}_{\text{post}}(x)
-\bigg],
-$$
 
 并施加最小间距/屏障约束；可扩展到时空候选 $(\mathbf{s},t)$。
 
