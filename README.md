@@ -1,233 +1,208 @@
+# Physics-Informed Kriging (PIK-Dyn)
 
-# Physics-Informed Kriging (PIK)
+**非稳态 PDE + 深度核学习（DKL）+ 时空核 × 屏障核 + 主动采样 + Co-Kriging**
 
-> 高可信空间插值与 **最优下一步采样**（水质热点等环境场景）  
-> High-confidence spatial interpolation + **next-best sampling** for environmental hotspots
-
----
-
-## ✨ Highlights / 亮点
-
-- **Physics prior 物理先验**  
-  Steady advection–diffusion PDE solved on grid ⇒ bilinear interpolation as GP mean with linear calibration.  
-  稳态对流–扩散方程在网格上求解，**双线性插值**作为 GP **均值**并线性校准。
-
-- **Kernels 核函数**  
-  RBF (ARD along/cross-flow) + RationalQuadratic (multi-scale) + non-stationary Gibbs-like × coastline **barrier** + white noise.  
-  RBF（ARD：流向/横向）+ RQ（多尺度）+ **非平稳** Gibbs 风格核 × **海岸屏障核** + 白噪声。
-
-- **Low-cost proxy fusion 低成本代理融合**  
-  Kennedy–O’Hagan **autoregressive co-kriging** (ρ·f_L + δGP).  
-  Kennedy–O’Hagan 自回归 Co-Kriging（ρ·f_L + δGP）。
-
-- **Active sampling 主动采样**  
-  Mutual-information (logdet) greedy + **minimum-distance** constraint.  
-  互信息 logdet 贪心 + **最小距离**约束。
-
-- **Evaluation 评估**  
-  10-fold CV (LOO-like) for MAE/RMSE/CRPS + hyper-parameter sweep heatmaps.  
-  10-fold 近似 LOO 的 MAE/RMSE/CRPS；超参扫描热力图。
+> 一套用于水质/污染羽团等场的**物理约束高斯过程**解决方案：
+> 既可以“用物理减弱数据稀疏的歧义”，又能通过 **DKL** 适配高维复杂输入，还能主动规划下一步采样以快速降低不确定性。
 
 ---
 
-## 🗂 Project Tree / 目录结构
+##   Highlights | 亮点
+
+* **非稳态 PDE 先验（动态羽团）**：用对流–扩散方程的数值模拟/谱法生成 $u(x,y,t)$，作为 GP 的**先验均值**，并提供 $\alpha,\beta$ 线性校准。
+  *Unsteady advection–diffusion plume simulation used as GP mean; learnable affine calibration.*
+
+* **深度核学习 DKL**：MLP 特征提取 + ExactGP，提升高维/非线性结构下的泛化与不确定性质量。
+  *Deep feature extractor + GP improves fit in high-dimensional settings.*
+
+* **时空核 × 屏障核**：空间核 $\times$ 时间核 的可分离结构；对跨陆连线进行**屏障衰减**，抑制“穿透式”错误相关。
+  *Separable space–time kernel with barrier attenuation to prevent land-crossing correlations.*
+
+* **低成本代理融合（Co-Kriging）**：自回归框架 $z_H = \rho\,f_L + \delta$，把遥感/廉价传感的低保真信息与少量高保真“真值”融合。
+  *Autoregressive co-kriging fuses low-/high-fidelity sources.*
+
+* **主动采样**：基于方差/互信息的贪心 + 最小距离约束，给出**下一轮采样点**，以最大化不确定性下降。
+  *Greedy MI/variance with min-distance to plan next measurements.*
+
+---
+
+##   Repository Structure | 目录结构
 
 ```
-
 physics-informed-kriging-pro/
-├─ .github/workflows/             
-├─ data/                             # 示例数据与地理边界
-├─ figures/                          # 出图目录
-├─ pik\_ext/                          # 扩展实现（DKL、时空核等）
-├─ results/                          # 指标/追溯信息
-├─ scripts/                          # 可直接运行的脚本
-├─ src/                              # 基础实现（物理均值、核、GP封装等）
-├─ summary/                         
-├─ tests/                            
-├─ README.md
-└─ requirements.txt
+├─ src/
+│  ├─ models/
+│  │  ├─ dynamic_pde.py        # 非稳态对流–扩散谱法模拟（T×H×W）
+│  │  ├─ pde_mean.py           # PDE 体数据 → GP 先验均值（3D 双/三线性插值）
+│  │  ├─ st_kernel.py          # 可分离时空核 + 屏障衰减
+│  │  ├─ barrier.py            # 屏障核：Shapely/栅格 fallback
+│  │  ├─ exactgp_st.py         # 时空 ExactGP 封装
+│  │  ├─ dkl_model.py          # DKL（MLP 特征 + ExactGP，已修正 init 顺序）
+│  │  └─ cokriging.py          # 自回归 Co-Kriging（两阶段）
+│  └─ utils/
+│     ├─ geo.py                # GeoJSON 读取/线段穿越检测工具
+│     └─ sampling.py           # 主动采样（EPV/MI 贪心 + 距离约束）
+├─ scripts/
+│  ├─ run_baseline.py          # PDE 均值 + 时空核 + 屏障 → 基线图/指标
+│  ├─ run_dynamic_plume.py     # 非稳态羽团 + 时空 GP（出 t=0.6 切片图）
+│  ├─ run_dkl_highdim.py       # Plain GP vs DKL 基准（NLL/RMSE 柱状）
+│  ├─ run_dynamic_dkl.py       # 动态 + DKL 综合（导出 .pt / 对比图）
+│  ├─ run_cokriging.py         # 低/高保真融合演示（均值/方差图）
+│  ├─ select_next_samples.py   # 主动采样点 CSV（k、最小距离）
+│  └─ sweep_lengths.py         # (lp, lc) 长度尺度扫描 → 热力图
+├─ data/                       # 示例/复现实验数据（可被脚本覆盖）
+├─ figures/                    # 结果图件（脚本生成）
+├─ results/                    # 指标 JSON 等
+├─ summary/                    # 扫描统计与热力图
+├─ tests/smoketest.py          # 冒烟测试（导入路径/版本兼容）
+└─ .github/workflows/ci.yml    # 最小 CI（CPU 轮子，跑冒烟/基线）
+```
 
-````
 
->  仓库自带 `data/` 示例，可直接运行（无需先生成数据）。  
-> Data in `data/` allows **out-of-box** runs.
+##   Installation | 环境安装
 
----
+> **Python**：建议 3.10–3.11（Windows 轮子更稳定）
+> **PyTorch**：先装（按 CPU/GPU 选择命令），再装 GPyTorch 与其余依赖。
 
-##  Environment / 环境
-
-**Recommended / 推荐**：Python **3.10–3.11**
-如用 GPU，请按你的 CUDA 版本安装对应 PyTorch；仅 CPU 则使用官方 CPU wheels。
-
-### Windows (PowerShell)
+**Windows PowerShell**
 
 ```powershell
 python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-# 若遇“脚本被禁用”，以管理员 PowerShell 执行：
-# Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-
+.\.venv\Scripts\Activate.ps1
+# 先装 PyTorch（示例为 CPU 版；若有 CUDA 请用官网命令替换）
+pip install torch==2.1.2+cpu torchvision==0.16.2+cpu torchaudio==2.1.2+cpu --index-url https://download.pytorch.org/whl/cpu
+# 再装 GPyTorch 与其它依赖
+pip install gpytorch==1.11 linear_operator==0.5.2
 pip install -r requirements.txt
-# 若脚本涉及 GPytorch/torch，可按需补装（CPU示例）：
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-# pip install gpytorch
-````
+```
 
-### macOS / Linux
+**macOS / Linux**
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-# 如需：pip install torch gpytorch
+pip3 install torch --index-url https://download.pytorch.org/whl/cpu   # 或按你CUDA版本
+pip3 install gpytorch==1.11 linear_operator==0.5.2
+pip3 install -r requirements.txt
 ```
 
 ---
 
-## 🚀 Quickstart / 开始
+##   Quickstart | 快速上手
 
-### A) Baseline（PDE 背景 + 屏障核）
+> 仓库已带 `data/` 与示例脚本，直接运行即可生成图件到 `figures/`。
+
+**1) 基线（PDE 均值 + 屏障核 + 时空核）**
 
 ```bash
-python scripts/run_baseline.py \
-  --use_pde_background \
-  --barrier_geojson data/malaysia_coast_example.geojson
+python scripts/run_baseline.py --use_pde_background --barrier_geojson data/malaysia_coast_example.geojson
 ```
 
-**Artifacts 产物**
+**产物**：`figures/mean_map.png`, `figures/std_map.png`, `results/metrics.json`
 
-* `figures/mean_map.png` — Posterior mean / 后验均值
-* `figures/std_map.png` — Uncertainty / 后验标准差
-* `figures/metrics.json` — MAE/RMSE/CRPS（10-fold）
-* `data/grid_pred.csv` — 全网格均值与不确定性
-
----
-
-### B) Low-cost proxy fusion（Co-Kriging / 低价代理融合）
+**2) 动态羽团（非稳态 PDE + 时空 GP）**
 
 ```bash
-python scripts/run_cokriging.py \
-  --n_lowfit 800 --lf_length 20 --hf_length 15
-```
-
-**Outputs**
-
-* `figures/mean_cok.png`, `figures/std_cok.png`
-* `data/grid_pred_cok.csv`
-
----
-
-### C) Active sampling（互信息贪心 + 距离约束）
-
-```bash
-python scripts/select_next_samples.py --k_next 8 --min_dist 3.0
-```
-
-**Outputs**
-
-* `figures/next_points.csv`（建议坐标与当前不确定性）
-
----
-
-### D) Hyper-parameter sweep（参数扫描 → 热力图）
-
-```bash
-python scripts/sweep_lengths.py \
-  --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_background
-```
-
-**Outputs**
-
-* `summary/all_metrics.csv`
-* `summary/heatmap.png`
-
----
-
-##  Synthetic Data & Proxy / 合成数据与代理
-
-重新生成（可调样本数、网格、流速、噪声等）：
-
-```bash
-python scripts/generate_synth.py \
-  --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
-```
-
-同时输出：
-
-* `proxy_grid.csv`、`proxy_points.csv`（模拟遥感等低成本代理；供 Co-Kriging 使用）
-
----
-
-##  Extended Demos（DKL & Dynamic Plume）/ 扩展示例
-
-> 若你已添加扩展模块（`pik_ext/` 或 `src/models/` 中的 DKL、时空核、动态羽团），可运行下列脚本（文件名按你仓库的脚本而定）：
-
-```bash
-# 动态羽团 + 时空 GP
 python scripts/run_dynamic_plume.py
+```
 
-# DKL 高维基准对比
+**产物**：`figures/plume_posterior.png`（t=0.6 切片的均值/方差）
+
+**3) 高维对比（Plain GP vs DKL）**
+
+```bash
 python scripts/run_dkl_highdim.py
+```
 
-# 动态羽团 + DKL 综合示例
+**产物**：`figures/dkl_nll.png`, `figures/dkl_rmse.png`
+
+**4) 动态 + DKL 综合**
+
+```bash
 python scripts/run_dynamic_dkl.py
 ```
 
-**Artifacts 产物（示例）**
-
-* `figures/plume_posterior.png`
-* `figures/dkl_nll.png`, `figures/dkl_rmse.png`
-* `data/dynamic_plume_fields.pt`, `data/dynamic_plume_obs.pt`, `data/dynamic_dkl_pred.pt`
-
-> 注：如你的脚本中存在包路径差异（`pik_ext.*` vs `src.models.*`），请按实际路径调整 `import`。
-> 若使用 GPytorch 模型，请优先使用 Python 3.10–3.11 以避免兼容性问题。
-
----
-
-##  Common Flags / 常用参数（`run_baseline.py`）
-
-* `--use_pde_background`：启用 PDE 背景均值（否则为沿流/横流二次多项式）
-* `--kappa` `--c_in` `--source_amp` `--source_x` `--source_y`：扩散系数、入流浓度、源项
-* `--barrier_geojson` `--barrier_gamma`：屏障核与穿越惩罚强度
-* `--length_parallel` `--length_cross` `--rq_alpha`：核长度与 RQ 形状参数
-* `--nonstat_boost_along` `--nonstat_boost_cross` `--nonstat_tau`：非平稳长度随“离岸距离”的增强幅度与尺度
-* `--no_opt` `--n_restarts`：关闭/开启超参优化与重启次数
-
----
-
-##  Reproduce in One Go / 复现实验（一步到位）
+**5) Co-Kriging 低/高保真融合**
 
 ```bash
-# 1) 合成数据 + 代理
-python scripts/generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
-
-# 2) 终极基线（PDE + 屏障 + 非平稳核）
-python scripts/run_baseline.py --use_pde_background --barrier_geojson data/malaysia_coast_example.geojson
-
-# 3) 主动采样建议
-python scripts/select_next_samples.py --k_next 8
-
-# 4) 低价代理融合
 python scripts/run_cokriging.py
-
-# 5) 超参扫描与热力图
-python scripts/sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_background
 ```
 
+**6) 主动采样（互信息/方差贪心 + 距离约束）**
+
+```bash
+python scripts/select_next_samples.py --k_next 8 --min_dist 0.1
+```
+
+**产物**：`figures/next_points.csv`
+
+**7) 参数扫描（lp, lc）→ 热力图**
+
+```bash
+python scripts/sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12
+```
+
+**产物**：`summary/all_metrics.csv`, `summary/heatmap.png`
+
 ---
 
-##  Tips & Troubleshooting / 常见问题
+##   Key Flags | 关键参数
 
-* **ModuleNotFoundError（包路径）**：按仓库实际结构将 `pik_ext.*` 与 `src.models.*` 的 `import` 对齐。
-* **AttributeError: cannot assign module before `Module.__init__()`**：在自定义 `nn.Module`/GP 模型 `__init__` 里需**先**调用 `super().__init__()` 再挂子模块。
-* **海岸屏障无效**：确认 GeoJSON 中陆地为**闭合多边形**；坐标系与数据一致（示例为归一化或统一经纬）。
-* **主动采样点过密**：增大 `--min_dist` 或在已有点邻域设屏蔽。
-* **收敛慢/数值不稳**：为长度尺度、噪声设定合理先验与边界；或先网格搜索热启动再优化。
-* **Windows 安装慢/失败**：优先 Python 3.10–3.11；必要时切换国内源，或 `pip --default-timeout 100`。
+* `run_baseline.py`
+
+  * `--use_pde_background`：启用 PDE 先验（否则使用多项式趋势）
+  * `--barrier_geojson` & `--barrier_gamma`：屏障核与惩罚强度
+  * `--kappa`：扩散系数（PDE 中）
+* `select_next_samples.py`
+
+  * `--k_next`：下一轮选择点数
+  * `--min_dist`：点与点之间的最小距离（防止扎堆）
 
 ---
 
-##  Citation / 致谢
+##   Method Notes | 方法说明
 
-If you use this repository, please cite the key literature on physics-informed kriging/GP (advection–diffusion priors, co-kriging) and acknowledge this implementation.
-若在科研中使用本仓库，请引用相关 PIK / Co-Kriging 文献，并注明本实现为参考。
+1. **PDE 先验均值**：把 $u(x,y,t)$ 体数据注册为 3D 体（`pde_mean.py`），对任意 $(x,y,t)$ 做双/三线性插值得到 $\mu(x,y,t)$，并通过 $\alpha,\beta$ 学习矫正模拟与观测的系统偏差。
+2. **Separable ST Kernel**：$\;k(\mathbf{x},t;\mathbf{x}',t')=k_s(\mathbf{x},\mathbf{x}')\cdot k_t(t,t')\;$；空间核可用 ARD-RBF / Matern，时间核常用 Matern($\nu=0.5$ / RBF)。
+3. **Barrier Attenuation**：若两点连线穿越陆地（GeoJSON 或栅格掩膜检测），在核矩阵上乘以 $\exp(-\gamma)$ 的衰减，避免跨陆“穿透”。
+4. **DKL**：MLP 将输入映射到潜空间，再用 ExactGP；这在复杂/高维输入下通常能得到更低的 NLL/RMSE。
+5. **Co-Kriging**：先拟合低保真 GP，再在高保真子集上估计 $\rho$，最后对残差拟合 GP，预测时叠加。
+6. **Active Sampling**：以当前方差/互信息作为效用，采用贪心 + 最小距离约束选择候选点，快速降低总体不确定性。
+
+---
+
+##   Reproducibility & CI | 复现与持续集成
+
+* 运行冒烟测试：
+
+```bash
+python tests/smoketest.py
+```
+
+* 仓库含最小 CI（GitHub Actions），会在 CPU 环境安装依赖并跑导入/基线脚本，保障可复现性。([GitHub][1])
+
+---
+
+##   Troubleshooting | 常见问题
+
+* **`ModuleNotFoundError: gpytorch`**：先装 PyTorch，再装 `gpytorch==1.11` 与 `linear_operator==0.5.2`。
+* **`cannot assign module before Module.__init__()`**：已在 `dkl_model.py` 修复（先 `super().__init__()` 再注册子模块）。
+* **Shapely/GeoJSON**：若本机无 `shapely`，屏障退化为无屏障；推荐按 `requirements.txt` 安装保证功能完备。
+* **GPU**：使用 GPU 时，请按 PyTorch 官网上与你 CUDA 版本匹配的命令安装。
+
+---
+
+##   Use Cases | 适用场景
+
+* 水环境热点/污染羽团插值与预报、监测布点优化
+* 城市空气/气味投诉热区、湖泊富营养化区域识别
+* 任意**稀疏观测 + 物理可表述**的时空场建模与采样规划
+
+---
+
+##   Citation | 引用
+
+> 如果你的研究或比赛使用了本仓库的方法/代码，请在报告/论文中注明 “Physics-Informed Kriging with Unsteady PDE Prior and Deep Kernel Learning (PIK-Dyn)”。
+
+
+
