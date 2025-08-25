@@ -17,6 +17,8 @@
 ---
 
 ##   方法与公式（简要）
+<img width="1242" height="384" alt="image" src="https://github.com/user-attachments/assets/2b6222f9-c673-4a5e-b3e3-7570c492163a" />
+
 
 给定观测集 \$\mathcal{D}={(\boldsymbol{s}*i,t\_i),, z\_i}*{i=1}^N\$，在物理先验 \$m\_\theta(\boldsymbol{s},t)\$ 下建模：
 
