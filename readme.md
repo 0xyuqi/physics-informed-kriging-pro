@@ -8,33 +8,44 @@
 
 ##   功能特性（Highlights）
 
-* **Physics-informed Kriging（PIK）**：将**对流–扩散 PDE**的数值解作为**GP 先验均值/约束**，并对偏差进行**线性校准**（β）。与纯数据核方法相比，能在小样本下输出更稳健的均值与不确定度。相关理论可参考 PhIK/CoPhIK 系列与 APIK 的主动学习思想。([engineering.lehigh.edu][1], [ACM Digital Library][2], [arXiv][3])
+* **Physics-informed Kriging（PIK）**：将**对流–扩散 PDE**的数值解作为**GP 先验均值/约束**，并对偏差进行**线性校准**（β）。与纯数据核方法相比，能在小样本下输出更稳健的均值与不确定度。相关理论可参考 PhIK/CoPhIK 系列与 APIK 的主动学习思想。
 * **各向异性/非平稳核**：沿/横流 ARD-RBF + RQ（多尺度）+ 可选**非平稳调制**（如随岸距变化）与**屏障核**（海岸/障碍不可穿越），并叠加白噪声。
-* **协同克里金（Co-Kriging，多保真）**：融合**低成本代理**（如遥感浊度指数、粗格点数值模式）与少量高保真“真值”（实验室检测），提升热点定位与不确定性收敛。参考 CoPhIK。([ACM Digital Library][2])
-* **主动采样（Active Sampling）**：用\*\*互信息（MI/log-det）\*\*或 **EPV（Expected Posterior Variance）**贪心选点，带**最小间距约束**，为“本轮→下一轮”采样提供方案。可借鉴 APIK 思路（把物理点/观测点联合设计）。([arXiv][3])
+* **协同克里金（Co-Kriging，多保真）**：融合**低成本代理**（如遥感浊度指数、粗格点数值模式）与少量高保真“真值”（实验室检测），提升热点定位与不确定性收敛。参考 CoPhIK。
+* **主动采样（Active Sampling）**：用\*\*互信息（MI/log-det）\*\*或 **EPV（Expected Posterior Variance）**贪心选点，带**最小间距约束**，为“本轮→下一轮”采样提供方案。可借鉴 APIK 思路（把物理点/观测点联合设计）。
 * **评估与可视化**：支持 LOO/ K-fold、**H-步时序外推**；输出 MAE/RMSE、**CRPS**（概率预报质量）、**热点识别 P/R**（阈值法）与地图/剖面图/不确定度图等。
 
 ---
-##  方法与公式（简要）
-模型（GP）与观测噪声：  
-<img alt="gp-model"
-src="https://latex.codecogs.com/svg.image?\fn_phv&space;f(\mathbf{s},t)\sim\mathcal{GP}\!\left(m_\theta(\mathbf{s},t)\,\beta,\,k\!\left((\mathbf{s},t),(\mathbf{s}',t')\right)\right),\quad
-z=f+\varepsilon,\ \varepsilon\sim\mathcal{N}(0,\sigma_n^2)" />
+### 模型与假设
 
-对流–扩散 PDE：  
-<img alt="pde"
-src="https://latex.codecogs.com/svg.image?\fn_phv&space;\partial_t&space;c(\mathbf{s},t)&plus;\mathbf{u}\cdot\nabla&space;c(\mathbf{s},t)=\kappa\nabla^{2}c(\mathbf{s},t)&plus;q(\mathbf{s},t)" />
+<p align="center">
+  <img src="./docs/formulas/eq_gp.png" alt="Gaussian Process with physics prior" />
+</p>
 
-Co-Kriging：  
-<img alt="cokriging"
-src="https://latex.codecogs.com/svg.image?\fn_phv&space;f_H(\cdot)=\rho\,f_L(\cdot)&plus;\delta(\cdot),\ \ \delta\sim\mathcal{GP}(0,k_\delta)" />
+<p align="center">
+  <img src="./docs/formulas/eq_obs.png" alt="Observation noise" />
+</p>
 
-主动采样目标：  
-<img alt="active"
-src="https://latex.codecogs.com/svg.image?\fn_phv&space;\mathcal{Q}^\star=\arg\max_{|\mathcal{Q}|=K}\left[\log\det(K_{\mathcal{Q}\mid\mathcal{D}})\ \text{or}\ \sum_{x\in\mathcal{Q}}\mathrm{Var}_{\text{post}}(x)\right]" />
+### 物理先验（PDE）
 
+<p align="center">
+  <img src="./docs/formulas/eq_pde.png" alt="Advection–diffusion PDE" />
+</p>
 
-并施加最小间距/屏障约束；可扩展到时空候选 $(\mathbf{s},t)$。
+### 核与多保真
+
+<p align="center">
+  <img src="./docs/formulas/eq_kernel_sep.png" alt="Separable spatiotemporal kernel" />
+</p>
+
+<p align="center">
+  <img src="./docs/formulas/eq_cokriging.png" alt="Co-Kriging autoregressive model" />
+</p>
+
+### 主动采样目标
+
+<p align="center">
+  <img src="./docs/formulas/eq_active.png" alt="Active sampling objective" />
+</p>
 
 
 ---
@@ -191,9 +202,9 @@ eval:
 
 ##   参考文献（主要方法脉络）
 
-1. **PhIK（Physics-Informed Kriging）**：Yang, Tartakovsky & Tartakovsky, *A Physics-Informed Gaussian Process Regression Method for Data-Model Convergence*, 2018. ([engineering.lehigh.edu][1])
-2. **CoPhIK（Physics-Informed Co-Kriging，多保真）**：Yang et al., *Physics-informed CoKriging*, J. Comput. Phys., 2019. ([ACM Digital Library][2])
-3. **APIK（Active PIK）**：Chen et al., *Active Physics-Informed Kriging (APIK)*, 2020. ([arXiv][3])
+1. **PhIK（Physics-Informed Kriging）**：Yang, Tartakovsky & Tartakovsky, *A Physics-Informed Gaussian Process Regression Method for Data-Model Convergence*, 2018. 
+2. **CoPhIK（Physics-Informed Co-Kriging，多保真）**：Yang et al., *Physics-informed CoKriging*, J. Comput. Phys., 2019. 
+3. **APIK（Active PIK）**：Chen et al., *Active Physics-Informed Kriging (APIK)*, 2020. 
 
 ---
 
