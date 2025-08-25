@@ -1,38 +1,81 @@
+import argparse
+import os
 from pathlib import Path
-import sys
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-import os, math
-import torch, gpytorch
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from src.models.cokriging import AutoRegCoKriging
 
-def make_data(nL=600, nH=60, seed=0):
-    torch.manual_seed(seed)
-    X = torch.rand(nL,2)
-    f = torch.sin(2*math.pi*X[:,0]) + 0.5*torch.cos(2*math.pi*X[:,1])
-    yL = f + 0.2*torch.randn_like(f)  # low-fidelity noisy
-    perm = torch.randperm(nL)[:nH]
-    XH = X[perm]; yH = (1.2*f[perm] + 0.05*torch.randn(nH))  # high-fidelity
-    return X, yL, XH, yH
+from src.models.cokriging import CoKrigingAR1, CKConfig
 
-def main(device=None):
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs("figures", exist_ok=True); os.makedirs("data", exist_ok=True)
 
-    XL, yL, XH, yH = make_data()
-    XL, yL, XH, yH = XL.to(device), yL.to(device), XH.to(device), yH.to(device)
+def load_low_high_points(data_dir: str):
+   
+    p_low = Path(data_dir) / "proxy_points.csv"
+    p_high = Path(data_dir) / "obs_points.csv"
+    if not p_low.exists() or not p_high.exists():
+        raise FileNotFoundError(f"Expect {p_low} and {p_high}. 请先运行 scripts/generate_synth.py 生成示例数据。")
+    dfL = pd.read_csv(p_low)
+    dfH = pd.read_csv(p_high)
+    return dfL, dfH
 
-    ck = AutoRegCoKriging(); ck.fit(XL, yL, XH, yH, iters=120)
-    # visualize over grid
-    n=80; xs=torch.linspace(0,1,n,device=device); ys=torch.linspace(0,1,n,device=device)
-    xx,yy=torch.meshgrid(xs,ys,indexing='xy'); Xg=torch.stack([xx.reshape(-1),yy.reshape(-1)],dim=-1)
-    m,v=ck.predict(Xg); m=m.reshape(n,n).cpu(); s=v.sqrt().reshape(n,n).cpu()
 
-    plt.figure(figsize=(10,4))
-    plt.subplot(1,2,1); plt.title("Co-Kriging mean"); plt.imshow(m.T,origin='lower',extent=[0,1,0,1]); plt.colorbar()
-    plt.subplot(1,2,2); plt.title("Co-Kriging std");  plt.imshow(s.T,origin='lower',extent=[0,1,0,1]); plt.colorbar()
-    plt.tight_layout(); plt.savefig("figures/mean_cok.png",dpi=150); plt.close()
-    print("Saved figures/mean_cok.png and std_cok.png")
+def load_grid(data_dir: str):
+    p = Path(data_dir) / "grid.csv"
+    if not p.exists():
+        raise FileNotFoundError(f"Expect {p}. 请先运行 scripts/generate_synth.py 生成网格。")
+    return pd.read_csv(p)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data_dir", default="data", help="数据目录")
+    ap.add_argument("--out_dir", default="figures", help="图片输出目录")
+    ap.add_argument("--n_restarts", type=int, default=2)
+    ap.add_argument("--lf_length", type=float, nargs=2, default=[20.0, 8.0])
+    ap.add_argument("--hf_length", type=float, nargs=2, default=[15.0, 6.0])
+    args = ap.parse_args()
+
+    os.makedirs(args.out_dir, exist_ok=True)
+
+    dfL, dfH = load_low_high_points(args.data_dir)
+    grid = load_grid(args.data_dir)
+
+    X_L = dfL[["x", "y"]].values
+    y_L = dfL["z"].values
+    X_H = dfH[["x", "y"]].values
+    y_H = dfH["z"].values
+    Xg = grid[["x", "y"]].values
+
+    cfg = CKConfig(lf_length=tuple(args.lf_length), hf_length=tuple(args.hf_length), n_restarts=args.n_restarts)
+    model = CoKrigingAR1(cfg).fit(X_L, y_L, X_H, y_H)
+
+    mean, std = model.predict(Xg, return_std=True)
+    grid_out = grid.copy()
+    grid_out["z_pred"] = mean
+    grid_out["z_std"] = std
+    grid_out.to_csv("data/grid_pred_cok.csv", index=False)
+
+    if {"i", "j"}.issubset(grid.columns):
+        ni, nj = int(grid["i"].max()) + 1, int(grid["j"].max()) + 1
+        Zm = grid_out.pivot_table(index="i", columns="j", values="z_pred").values
+        Zs = grid_out.pivot_table(index="i", columns="j", values="z_std").values
+        plt.figure(figsize=(5, 4))
+        plt.title("Co-Kriging mean")
+        plt.imshow(Zm, origin="lower")
+        plt.colorbar()
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.out_dir, "mean_cok.png"), dpi=200)
+
+        plt.figure(figsize=(5, 4))
+        plt.title("Co-Kriging std")
+        plt.imshow(Zs, origin="lower")
+        plt.colorbar()
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.out_dir, "std_cok.png"), dpi=200)
+
+    print("Saved:", "figures/mean_cok.png", "figures/std_cok.png", "data/grid_pred_cok.csv")
+
 
 if __name__ == "__main__":
     main()
+
