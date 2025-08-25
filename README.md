@@ -280,13 +280,3 @@ python scripts/select_next_samples.py --k_next 8 --strategy var --min_dist 3.0
 # 4) 评估（可把上面的 RMSE/CRPS/PIT 片段收进 evaluate 脚本）
 python scripts/evaluate_models.py   # 可选：输出 results/metrics.csv
 ```
-
----
-
-### 12) 小贴士（呈现与答辩）
-
-* 把 `mean_cok.png / std_cok.png / next_points.csv` 与 baseline 的对应图放在一页，展示“阶梯式提升”。
-* 在 PPT 中配一条“RMSE vs 采样轮数”曲线 + 一张 PIT 直方图（校准性），评委很容易看懂改进点。
-* 强调**成本-精度曲线**：同样预算下，主动采样带来更快的误差下降（更高的性价比）。
-
-```
