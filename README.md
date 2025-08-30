@@ -1,282 +1,333 @@
-# 多保真 Co-Kriging + 主动采样（Multi-Fidelity + Active Sampling）
+# Physics-Informed Kriging (PIK)
 
-本模块在 Physics-Informed Kriging baseline 的基础上，引入 **多保真 Co-Kriging**（低保真代理数据 + 少量高保真实测融合）与 **主动采样**（variance greedy / A-optimal），在稀疏观测条件下显著提升预测精度，并给出下一轮最优采样点。
-
----
-
-## 1) 方法概览
-
-### 1.1 多保真 Co-Kriging（AR(1) 结构）
-
-我们采用自回归多保真模型，将低保真 (LF) 与高保真 (HF) 信息统一到同一高斯过程框架：
-
-$$
-f_L(x)\sim \mathcal{GP}(0, k_L), \qquad
-f_H(x) = \rho\, f_L(x) + \delta(x), \qquad
-\delta(x) \sim \mathcal{GP}(0, k_\delta)
-$$
-
-**两阶段估计：**
-1. 仅用低保真数据拟合 $f_L$；  
-2. 在高保真位置使用 $f_L$ 的预测均值回归估计 $\rho$，并将残差拟合为 $\delta$。  
-
-预测时：
-
-方差近似按独立项相加。
+> 高可信空间插值与“下一步采样”解决方案（面向水质热点等环境场景）
+> High-confidence spatial interpolation & next-best sampling for environmental hotspots
 
 ---
 
-### 1.2 主动采样（Active Sampling）
+## 目录 / Table of Contents
 
-- **Variance Greedy（方差贪心）**：每轮从候选集中选出预测方差最大的点（可加最小距离约束，避免扎堆）。  
-- **A-optimal / 互信息近似（全局）**：每轮选择能使全局平均方差下降最多的点，较 variance greedy 更顾全局，但计算开销更高。  
-- **最小距离约束**：保证空间覆盖性，避免局部过密。  
-
-> 注：物理先验 / 屏障核 / 时空核继承自 baseline；本模块与其 **无缝对接**：输入输出格式一致，可直接进行 Baseline → Anisotropic → Co-Kriging → Active Sampling 的对比。
+* [亮点 / Highlights](#亮点--highlights)
+* [为何选择 PIK？/ Why PIK?](#为何选择-pik--why-pik)
+* [项目结构 / Project Structure](#项目结构--project-structure)
+* [环境与安装 / Environment & Installation](#环境与安装--environment--installation)
+* [快速上手 / Quickstart](#快速上手--quickstart)
+* [一键复现实验 / Reproduce in One Go](#一键复现实验--reproduce-in-one-go)
+* [数据与代理 / Data & Proxy](#数据与代理--data--proxy)
+* [常用参数 / Common Flags](#常用参数--common-flags)
+* [扩展示例 / Extended Demos](#扩展示例--extended-demos)
+* [结果产物 / Outputs](#结果产物--outputs)
+* [排错小抄 / Troubleshooting](#排错小抄--troubleshooting)
+* [引用与致谢 / Citation & Acknowledgements](#引用与致谢--citation--acknowledgements)
 
 ---
 
-## 2) 目录结构（与本模块相关）
+## 亮点 / Highlights
 
+* 物理先验（非稳态 PDE）：求解时变对流–扩散方程，得到随时间演化的背景均值 m(x,y,t)，作为 GP 的时间依赖背景；并通过线性/仿射校准提升泛化。
+* Kernel Deep Learning（DKL）：用神经网络作为特征提取器，将 \[x,y,t,aux] 映射到嵌入空间，再在嵌入上做 GP（RBF/Matérn/RQ + Scale/ARD + 屏障核），兼顾表达力与不确定性量化。
+* 丰富核函数组合：RBF/Matérn（沿流/横流 ARD） + RationalQuadratic（多尺度） + 非平稳（Gibbs-like）× 海岸屏障核 + 白噪声；支持时空核与输入依赖长度尺度。
+* 低成本代理融合：基于 Kennedy–O’Hagan 自回归 Co-Kriging，以少量高保真 + 海量低保真实现性价比最优的预测。
+* 主动采样（Next-Best Sampling）：基于互信息（A-opt/logdet）贪心策略，配合最小距离约束，给出下一步采样坐标建议。
+* 严格评估：近 LOO 的 10-fold CV，报告 MAE / RMSE / CRPS / PIT；附超参扫描与热力图辅助诊断。
+
+---
+
+## 为何选择 PIK？ / Why PIK?
+
+环境监测（如水质、空气污染）常呈强时空耦合：污染羽团随时间扩散/输运，海岸线/地形构成天然屏障，且观测稀疏。传统平稳/静态 Kriging 假设因此失效。本项目将非稳态物理（对流–扩散 PDE，随时间演化）与概率建模（非平稳核 + DKL + Co-Kriging）结合，兼顾可解释性、鲁棒性与采样效率。
+
+---
+
+## 多保真 + 主动采样 / Multi‑Fidelity + Active Sampling
+
+**模块目标**：在 Physics‑Informed Kriging baseline 基础上，引入**多保真 Co‑Kriging（低保真代理 + 少量高保真观测）**与**主动采样（variance greedy / A‑optimal）**，在稀疏观测条件下显著提升预测精度，并给出下一轮最优采样点。
+
+**多保真建模（Kennedy‑O'Hagan）**：
+
+* 低保真 y\_L(x,t) \~ GP(m\_L, k\_L)
+* 残差 δ(x,t) \~ GP(0, k\_δ)
+* 高保真 y\_H(x,t) = ρ · y\_L(x,t) + δ(x,t) + ε\_H
+  其中 ρ 为尺度/相关系数，k\_L 与 k\_δ 可用各向异性 + 非平稳 + 屏障核的和/积组合。
+
+**主动采样策略**：
+
+* Variance greedy：在候选集合 argmax σ²(x,t)。
+* A‑optimal（A‑opt）：贪心近似最小化后验协方差迹（等价最大化信息增益）。支持批量选点与**最小距离约束**避免过密。
+
+**使用流程**：
+
+```bash
+# 1) 训练多保真 Co-Kriging（先拟合低保真，再融合高保真）
+python scripts/run_cokriging.py \
+  --n_lowfit 800 --lf_length 20 8 --hf_length 15 6
+
+# 2) 选择下一轮采样点（A-opt 或方差贪心）
+python scripts/select_next_samples.py --k_next 8 --strategy aopt --min_dist 3.0
+
+# 3) 采集新高保真样本后，增量更新
+python scripts/run_cokriging.py --warm_start
 ```
 
-src/
-models/cokriging.py      # 多保真 Co-Kriging（两阶段实现，sklearn 内核）
-design/acquisition.py    # 主动采样（variance greedy / A-opt 近似 + 最小距离约束）
-scripts/
-run\_cokriging.py         # 训练并在网格上预测，导出 mean / std 图与 CSV
-select\_next\_samples.py   # 给出下一轮采样点（var / aopt）
-data/
-proxy\_points.csv         # 低保真点（x,y,z）
-obs\_points.csv           # 高保真点（x,y,z）
-grid.csv                 # 候选网格（x,y\[,i,j]）
-figures/
-mean\_cok.png             # Co-Kriging 均值热力图
-std\_cok.png              # Co-Kriging 不确定性热力图
-next\_points.csv          # 下一轮采样点（x,y\[,其他列]）
+**产物**：
 
-````
+* `figures/mean_cok.png`, `figures/std_cok.png`（多保真融合效果）
+* `figures/acq_map.png`（采样效用/方差热图）
+* `figures/next_points.csv`、`figures/next_points_ranked.csv`（建议点与得分）
+* `results/mf_active_history.json`（每一轮的指标与参数追踪）
+
+**实践建议**：
+
+* 对代理与实测做**尺度/偏置校准**（ρ 的初值与边界）；必要时对 y 进行标准化。
+* 若候选点靠岸聚集，调大 `--min_dist` 或在陆地内设置屏蔽；A‑opt 通常较 variance greedy 更稳健。
+* 预算受限时，可设置**成本权重**（低保真成本远低于高保真）以平衡探索‑开销。
 
 ---
 
-## 3) 数据格式约定
+## 项目结构 / Project Structure
 
-- `data/proxy_points.csv`（低保真代理样本）  
-  必需列：`x,y,z`
-
-- `data/obs_points.csv`（高保真实测样本）  
-  必需列：`x,y,z`
-
-- `data/grid.csv`（预测/候选网格）  
-  必需列：`x,y`；若要自动输出热图矩阵，建议额外含 `i,j`（整型网格索引）
-
-> **坐标系统**：建议统一平面投影（如 UTM / WebMercator）。若为经纬度，需考虑尺度单位对核长度的影响。  
-> **时间维度**：简化用法是把时间 `t` 直接拼入特征 `[x,y,t]`，或在 baseline 使用时空核；本模块默认二维空间输入。
-
----
-
-## 4) 快速开始（Quickstart）
-
-1. **准备或生成数据**（项目已提供示例脚本）：
-```bash
-python scripts/generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
-````
-
-2. **多保真 Co-Kriging 训练与预测**：
-
-```bash
-python scripts/run_cokriging.py --n_restarts 2 --lf_length 20 8 --hf_length 15 6
+```text
+physics-informed-kriging-pro/
+├─ .github/workflows/            # CI 配置（如格式检查、单元测试）
+├─ data/                         # 示例数据与地理边界（可直接运行）
+├─ figures/                      # 可视化输出（均值/不确定性/热力图等）
+├─ results/                      # 评估指标、追溯信息
+├─ scripts/                      # 一键脚本（基线、Co-Kriging、主动采样、扫描等）
+├─ src/                          # 核心实现（物理背景、核函数、GP 封装等）
+├─ summary/                      # 汇总表与图（如 all_metrics.csv, heatmap.png）
+├─ tests/                        # 单元/回归测试
+├─ README.md
+└─ requirements.txt
 ```
 
-输出：
+> 说明：仓库自带 `data/` 示例，可**开箱即跑**。
 
-* `figures/mean_cok.png`（预测均值热力图）
-* `figures/std_cok.png`（预测不确定性）
-* `data/grid_pred_cok.csv`（含 `x,y,z_pred,z_std`）
+---
 
-3. **主动采样（选择下一轮测点）**：
+## 环境与安装 / Environment & Installation
+
+**推荐 Python 3.10–3.11**（若使用 GPU，按你的 CUDA 版本安装对应 PyTorch；仅 CPU 则安装官方 CPU wheels）。
+
+**Windows (PowerShell)**
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+# 如遇“脚本被禁用”，在管理员 PowerShell 执行：
+# Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+pip install -r requirements.txt
+# 如需（CPU 示例）：
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# pip install gpytorch
+```
+
+**macOS / Linux**
 
 ```bash
-# 方差贪心
-python scripts/select_next_samples.py --k_next 8 --strategy var --min_dist 3.0
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# 如需：pip install torch gpytorch
+```
 
-# A-optimal（互信息近似，全局更优）
+---
+
+## 快速上手 / Quickstart
+
+### A) 时空基线（非稳态 PDE 背景 + 屏障核）
+
+> 时间维度以列 `t` 表示；若仅有静态数据，可将 `t=0` 作为单一时间片。
+
+```bash
+python scripts/run_baseline.py \
+  --use_pde_background \
+  --barrier_geojson data/malaysia_coast_example.geojson
+```
+
+**产物**
+
+* `figures/mean_map_*.png` — 不同时间片的后验均值
+* `figures/std_map_*.png` — 不确定性时间序列
+* `results/metrics.json` — 10-fold MAE / RMSE / CRPS / PIT
+* `data/grid_pred_t.csv` — 全网格随时间的均值与不确定性
+
+---
+
+### B) Kernel Deep Learning（DKL）
+
+> 使用神经网络作为特征提取器，再在嵌入上做 GP（需 `torch` + `gpytorch`）。
+
+```python
+# 简要示例：将 [x,y,t,aux] → φ_θ(x)
+import torch, torch.nn as nn, gpytorch
+
+class FeatureExtractor(nn.Module):
+    def __init__(self, in_dim=3, hid=64, emb=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hid), nn.SiLU(),
+            nn.Linear(hid, hid), nn.SiLU(),
+            nn.Linear(hid, emb)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+# 在 GP kernel 中使用嵌入（与屏障核/各向异性核可做和/积组合）
+feature_extractor = FeatureExtractor(in_dim=3)  # 例如 [x,y,t]
+base_kernel = gpytorch.kernels.RBFKernel(ard_num_dims=32)
+emb_kernel  = gpytorch.kernels.ScaleKernel(base_kernel)
+```
+
+**产物**
+
+* `figures/mean_dkl_*.png`, `figures/std_dkl_*.png`
+* `data/grid_pred_dkl.csv`
+
+---
+
+### C) 多保真 Co-Kriging（融合低成本代理）
+
+```bash
+python scripts/run_cokriging.py \
+  --n_lowfit 800 --lf_length 20 8 --hf_length 15 6
+```
+
+**产物**
+
+* `figures/mean_cok.png`, `figures/std_cok.png`
+* `data/grid_pred_cok.csv`
+
+---
+
+### D) 主动采样（互信息贪心 + 距离约束）
+
+```bash
 python scripts/select_next_samples.py --k_next 8 --strategy aopt --min_dist 3.0
 ```
 
-输出：
+**产物**
 
-* `figures/next_points.csv`（下一轮推荐采样点）
-
----
-
-## 5) 实验结果（模拟数据）
-
-| 方法               | RMSE | CRPS | PIT 校准性 |
-| ---------------- | ---- | ---- | ------- |
-| Baseline Kriging | 1.24 | 0.96 | 偏差明显    |
-| Anisotropic GP   | 1.03 | 0.81 | 略有改善    |
-| Co-Kriging       | 0.82 | 0.63 | 接近均匀    |
-| Active Sampling  | 0.61 | 0.50 | 最佳（均匀）  |
-
+* `figures/next_points.csv` — 建议坐标与当前不确定性
 
 ---
 
-## 6) 模块亮点
+### E) 多保真 + 主动采样循环（建议）
 
-1. **多保真融合（Co-Kriging AR(1)）**
+按 **C → D → 新采样 → C** 的顺序迭代若干轮；每轮将新高保真点并入训练集后 `--warm_start` 继续优化，并记录 `results/mf_active_history.json`。
 
-   * 融合低保真数据与高保真实测
-   * 显著降低预测误差，提升稳定性
-
-2. **主动采样策略**
-
-   * 实现方差贪心与 A-optimal（互信息近似）
-   * 加入最小距离约束，避免采样点扎堆
-   * 提升收敛速度与整体预测质量
-
-3. **无缝对接 baseline**
-
-   * 输出文件命名与格式保持一致
-   * 方便逐步对比：Baseline → Anisotropic GP → Co-Kriging → Active Sampling
-
-4. **应用场景**
-
-   * 海洋生态监测（浮标布设、无人船规划）
-   * 水质监测与污染扩散建模
-   * 空气污染、湖泊富营养化、城市热岛等泛化场景
-
----
-
-
-### 5) 参数说明与建议
-
-`run_cokriging.py`
-
-* `--n_restarts`：核超参优化重启次数（2\~5 一般够用；>5 可能更稳但更慢）
-* `--lf_length a b`：低保真核在 x/y 方向的长度尺度（各向异性 ARD）；单位需与坐标一致
-* `--hf_length a b`：高保真残差核的长度尺度
-
-> 默认 Matérn(ν=1.5) + WhiteKernel 噪声项。
-
-`select_next_samples.py`
-
-* `--k_next`：本轮需要选择的采样点个数（建议 4\~16）
-* `--strategy {var,aopt}`：方差贪心或 A-optimal（MI 近似）
-* `--min_dist`：最小点间距（建议设置为 1\~3 个网格步长，避免扎堆）
-
-**实践建议**
-
-* 首轮用 `var`（便宜、收敛快），后续在关键轮次用 `aopt` 做全局质量提升。
-* 如果方差图出现“环带状热点”，增大 `--min_dist` 或下采样候选集。
-
----
-
-### 6) 输出文件说明
-
-* **`data/grid_pred_cok.csv`**：网格预测结果
-  列：`x,y,z_pred,z_std`（若 `grid.csv` 含 `i,j`，可用于还原矩阵热图）
-* **`figures/mean_cok.png` / `figures/std_cok.png`**：可直接放报告/PPT
-* **`figures/next_points.csv`**：主动采样输出，列包含 `x,y`（可自行在地图/热图上叠加显示）
-
----
-
-### 7) 评估与复现（可直接复制）
-
-> 下述片段演示如何以“观测点”为真值，对模型在网格上的预测做**插值回收**，或直接在留出集上评估。
-> 若有独立测试集 `obs_test.csv`，直接用其 `x,y,z` 与 `z_pred,z_std` 对齐即可。
-
-```python
-import numpy as np, pandas as pd
-from scipy.stats import norm
-
-# 加载观测与预测
-obs = pd.read_csv("data/obs_points.csv")          # x,y,z
-pred = pd.read_csv("data/grid_pred_cok.csv")      # x,y,z_pred,z_std
-
-# 若需要对齐，可用最近邻或双线性回收（此处演示最近邻）
-from sklearn.neighbors import NearestNeighbors
-nn = NearestNeighbors(n_neighbors=1).fit(pred[["x","y"]].values)
-dist, idx = nn.kneighbors(obs[["x","y"]].values)
-obs["z_pred"] = pred["z_pred"].values[idx[:,0]]
-obs["z_std"]  = pred["z_std"].values[idx[:,0]]
-
-# RMSE
-rmse = np.sqrt(np.mean((obs["z"] - obs["z_pred"])**2))
-
-# CRPS（Gaussian closed-form）
-def crps_gaussian(y, mu, sigma):
-    # 参考公式：CRPS(N(μ,σ), y) = σ[ 1/√π - 2φ(a) - a(2Φ(a)-1) ]，a=(y-μ)/σ
-    # φ、Φ分别为标准正态 pdf、cdf
-    a = (y - mu) / np.clip(sigma, 1e-12, None)
-    pdf = norm.pdf(a); cdf = norm.cdf(a)
-    return np.mean(sigma * (1/np.sqrt(np.pi) - 2*pdf - a*(2*cdf-1)))
-
-crps = crps_gaussian(obs["z"].values, obs["z_pred"].values, obs["z_std"].values)
-
-# PIT（校准性）
-pits = norm.cdf((obs["z"] - obs["z_pred"]) / np.clip(obs["z_std"], 1e-12, None))
-
-print({"RMSE": float(rmse), "CRPS": float(crps), "PIT_mean": float(np.mean(pits))})
-```
-
-> **推荐做法**：统一随机种子、固定训练/验证/测试划分，保留 `results/metrics.csv` 与 `figures/` 图件，保证**可复现**。
-
----
-
-### 8) 与 baseline 的集成/对比
-
-* **输入对齐**：本模块与 baseline 使用相同的数据接口（`obs_points.csv` / `proxy_points.csv` / `grid.csv`）。
-* **对比建议**：
-
-  1. Baseline Kriging（或各向异性 GP）
-  2. +Co-Kriging（多保真融合）
-  3. +Active Sampling（方差贪心 / A-optimal）
-* **展示组合**：误差对比表（RMSE/CRPS）、不确定性图、采样顺序图、误差下降曲线（vs 采样轮数）、PIT 直方图。
-
----
-
-### 9) 常见问题（FAQ）
-
-* **Q：预测图出现“穿透陆地”的相关性？**
-  A：请在 baseline 启用屏障核（Barrier），或增大其惩罚系数；本模块输出与 baseline 热图一致，可直接叠加屏障效果。
-
-* **Q：方差贪心点位扎堆？**
-  A：增大 `--min_dist`；或先用 `var` 选少量点，再切换 `aopt` 做全局均衡。
-
-* **Q：优化不收敛/超参波动大？**
-  A：降低核复杂度（先用 RBF），调大长度尺度初值，限制噪声下界；`--n_restarts` 设为 0/1 观察稳定性后再调高。
-
-* **Q：速度问题？**
-  A：候选集很大时，`aopt` 计算量高。可对候选集 KMeans 下采样（例如 5k → 1k），近似效果通常仍好于随机。
-
-* **Q：如何加时间维度？**
-  A：简单做法是把 `t` 拼成特征 `[x,y,t]`；更严格建议在 baseline 使用**时空可分离核**建模，再把本模块作为“多保真 + 采样优化”的增强层。
-
----
-
-### 10) 结果展示
-
-| 方法               | RMSE | CRPS | PIT 校准性 |
-| ---------------- | ---- | ---- | ------- |
-| Baseline Kriging | 1.24 | 0.96 | 偏差明显    |
-| Anisotropic GP   | 1.03 | 0.81 | 略有改善    |
-| Co-Kriging       | 0.82 | 0.63 | 接近均匀    |
-| Active Sampling  | 0.61 | 0.50 | 最佳（均匀）  |
-
----
-
-### 11) 复现实验“一键流”建议
-
-可添加一个脚本 `run_all.py`（示例）：
+## 一键复现实验 / Reproduce in One Go / Reproduce in One Go
 
 ```bash
-# 1) 生成/清洗数据
-python scripts/generate_synth.py --n_obs 40 --grid 80 --seed 42
-# 2) 训练 Co-Kriging 并导出预测
-python scripts/run_cokriging.py --n_restarts 2 --lf_length 20 8 --hf_length 15 6
-# 3) 选择下一轮采样点
-python scripts/select_next_samples.py --k_next 8 --strategy var --min_dist 3.0
-# 4) 评估（可把上面的 RMSE/CRPS/PIT 片段收进 evaluate 脚本）
-python scripts/evaluate_models.py   # 可选：输出 results/metrics.csv
+# 1) 生成合成数据 + 代理
+python scripts/generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
+
+# 2) 终极基线（PDE + 屏障 + 非平稳核）
+python scripts/run_baseline.py --use_pde_background --barrier_geojson data/malaysia_coast_example.geojson
+
+# 3) 主动采样建议
+python scripts/select_next_samples.py --k_next 8
+
+# 4) 低价代理融合
+python scripts/run_cokriging.py
+
+# 5) 超参扫描与热力图
+python scripts/sweep_lengths.py --lp_list 20 30 40 --lc_list 6 8 12 --use_pde_background
 ```
+
+---
+
+## 数据与代理 / Data & Proxy
+
+* 空间边界：`data/malaysia_coast_example.geojson`（用于屏障核与海岸穿越惩罚）。
+* 观测/代理数据格式：
+
+  * 点观测：`obs_points.csv` 至少包含 `x,y,z[,t]`；
+  * 低保真代理：`proxy_points.csv` 至少包含 `x,y,z[,t]`；
+  * 网格：`grid.csv` 至少包含 `x,y[,t]`；如含 `i,j` 便于还原矩阵热图。
+* 时间维度：建议离散等间隔 `t`；若不等间隔，将 `t` 直接作为输入或做时间重采样。
+* 合成数据生成：
+
+  ```bash
+  python scripts/generate_synth.py --n_obs 40 --grid 80 --noise 0.1 --vx 1.0 --vy 0.3 --seed 42
+  ```
+
+---
+
+## 常用参数 / Common Flags（示例）
+
+* PDE 背景：`--use_pde_background`, `--kappa`, `--c_in`, `--lambda`，`--source_amp/source_pos` 等；
+* 屏障核：`--barrier_geojson`, `--barrier_gamma`（穿越惩罚强度）。
+* DKL：`--use_dkl`, `--backbone {mlp,resnet}`, `--emb_dim`，`--freeze_backbone`；
+* 时空核：`--length_parallel/--length_cross`（ARD），`--rq_alpha`（多尺度），`--time_length`（时间长度尺度），`--nonstat_tau`（非平稳尺度）。
+* 优化：`--n_restarts`, `--lr`, `--max_iter`；
+* 主动采样：`--k_next`, `--strategy {var,aopt}`, `--min_dist`。
+
+> 小贴士：先用扫参脚本获取合理范围，再用 DKL+非稳态核做局部精调，可显著提升稳定性与精度。
+
+---
+
+## 扩展示例 / Extended Demos
+
+```bash
+# 1) 非稳态羽团（PDE 背景）
+python scripts/run_dynamic_plume.py
+
+# 2) DKL 对比（与纯核法）
+python scripts/run_dkl_highdim.py
+
+# 3) 非稳态羽团 + DKL 综合示例
+python scripts/run_dynamic_dkl.py
+```
+
+**示例产物**
+
+* `figures/plume_posterior_t.png`（时空均值）
+* `figures/dkl_nll.png`, `figures/dkl_rmse.png`
+* `data/dynamic_dkl_pred.pt`
+
+> 说明：如脚本名与本地不同，请以仓库实际目录为准调整 `import` 与命令。
+
+---
+
+## 结果产物 / Outputs
+
+* 时空地图：`figures/mean_map_*.png`, `figures/std_map_*.png`（多时间片）。
+* 评估：`results/metrics.json`、`summary/all_metrics.csv`（MAE / RMSE / CRPS / PIT 与交叉验证记录）。
+* 建议点：`figures/next_points.csv`（主动采样）。
+* 网格预测：`data/grid_pred*.csv`（含 Co-Kriging / DKL 版本）。
+* 热力图：`summary/heatmap.png`；可选导出 `gif/mp4` 时间序列。
+
+---
+
+## 排错 / Troubleshooting
+
+* ModuleNotFoundError（包路径）：将 `pik_ext.*` 与 `src.models.*` 的 `import` 与仓库实际结构对齐。
+* AttributeError: cannot assign module before `Module.__init__()`：在自定义 `nn.Module`/GP 模型中，务必先调用 `super().__init__()` 再注册子模块。
+* 海岸屏障无效：确认 GeoJSON 为闭合多边形，坐标系/尺度与数据一致；必要时做归一化。
+* 主动采样点过密：增大 `--min_dist` 或在已有点邻域设屏蔽。
+* 数值不稳（非稳态 PDE）：减小时间步长 Δt、采用隐式/半隐式格式；为长度尺度/噪声设置合理先验/边界；先网格扫参热启动再优化。
+* DKL 过拟合：
+
+  * 对嵌入使用 `weight_decay`/`dropout`；
+  * 先冻结骨干再联合微调；
+  * 使用 LOVE 近似或降低嵌入维度；
+  * 开启早停并监控 `PIT`/`CRPS`。
+* Windows 安装慢/失败：优先 Python 3.10–3.11；必要时切换国内源，或 `pip --default-timeout 100`。
+
+---
+
+## 引用与致谢 / Citation & Acknowledgements
+
+如在科研/生产中使用本仓库，请引用**物理信息 Kriging/GP**、**对流–扩散先验**与 **Co-Kriging** 相关文献，并注明本实现为参考。
+If you use this repository, please cite the key literature on physics‑informed kriging/GP (advection–diffusion priors, co‑kriging) and acknowledge this implementation.
+
+---
+
+### 贡献 / Contributing
+
+欢迎提交 Issue/PR 修复 Bug、补充数据与示例、或扩展核函数/主动采样策略。建议配套最小可复现实验与单测。
+
+### 维护者 / Maintainer
+
+本仓库由原作者维护。若有问题与建议，请在 Issues 中反馈。
